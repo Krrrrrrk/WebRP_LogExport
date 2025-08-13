@@ -1,5 +1,5 @@
 # WebRP_LogExport
-Allows exporting of chat logs to Markdown format
+Allows exporting of chat logs to Markdown format via Tampermonkey.
 
 **Main Features:**
 
