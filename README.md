@@ -3,7 +3,9 @@
 A Tampermonkey userscript that extracts and copies all messages from RP chat sessions on OurDream.ai, preserving markdown formatting and clearly labeling who said what.
 
 Want to support me? Send me some coins or create your OurDream.ai account with my referral!
+
 Referral: https://ourdream.ai/?reward=referral&ref=B4PBGY
+
 ourdream.ai profile: https://ourdream.ai/u/krrrrrrk
 
 ## ⚠️ Support Notice
