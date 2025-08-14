@@ -187,3 +187,34 @@ Found a bug or want to add a feature? Feel free to:
 ---
 
 **Note:** This script is not affiliated with OurDream.ai. Use at your own discretion and respect the platform's terms of service.
+
+This shouldn't break anything in OurDreams TOS. If it does please let me know and I'll remove it ASAP.
+
+The script is essentially a personal use tool that:
+
+✅ Only accesses content you already have legitimate access to (your own conversations)
+✅ Runs entirely client-side (no server interaction beyond normal page loading)
+✅ Doesn't bypass any authentication or access controls
+✅ Doesn't scrape their servers or create additional load
+✅ Doesn't reproduce or redistribute their service
+✅ Just automates manual clicking you could do yourself
+
+It's similar to:
+
+Browser extensions like "Select All Text" or "Copy as Markdown"
+Accessibility tools that help users interact with content
+Browser developer tools that let you inspect and copy page content
+The browser's built-in "Save Page As" feature
+
+The script does NOT:
+
+❌ Access other users' private content
+❌ Bypass paywalls or premium features
+❌ Make automated server requests or API calls
+❌ Interfere with the service's operation
+❌ Collect or transmit data anywhere
+❌ Reverse engineer their backend systems
+
+The key point is that you're only extracting your own RP sessions that you can already see and manually copy. 
+The script just makes that process more convenient by preserving formatting. 
+It's a quality-of-life improvement for personal use, not a tool for exploiting or abusing their service.
