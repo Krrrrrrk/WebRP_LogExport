@@ -39,7 +39,7 @@ A Tampermonkey userscript that extracts and copies all messages from RP chat ses
 
 **Always scroll to the top of your chat first!** 
 - The script only processes messages that are currently loaded on the page
-- OurDream.ai uses lazy loading, so older messages might not be visible
+- OurDream.ai truncates the log, so older messages might not be visible, this script only grabs what's currently loaded!
 - Scroll all the way up to ensure all messages are loaded before extraction
 
 ### Extracting Messages
@@ -55,7 +55,7 @@ A Tampermonkey userscript that extracts and copies all messages from RP chat ses
 ### Keyboard Shortcuts
 
 - **`Ctrl+Alt+E`** - Extract all messages and copy to clipboard
-- **`Ctrl+Alt+H`** - Highlight/unhighlight messages (preview mode)
+- **`Ctrl+Alt+H`** - Highlight/unhighlight messages (for debugging)
 
 ## Output Format
 
@@ -98,7 +98,7 @@ For the best viewing and editing experience of your extracted RP sessions, I rec
 - ⚠️ **Don't switch to other applications** 
 - ✅ You CAN minimize the entire browser window
 - ✅ You CAN resize the browser to a corner
-- The extraction typically takes 10-30 seconds depending on message count
+- The extraction is a bit slow, go make a coffee or something. 
 
 ### Browser Compatibility
 - **Tested and confirmed working on Chrome**
