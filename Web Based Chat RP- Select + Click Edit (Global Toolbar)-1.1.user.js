@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         Web Based Chat RP: Select + Click Edit (Global Toolbar)
-// @namespace    https://example.com
-// @version      1.1
-// @description  Ctrl+Alt+E: select each message, then click its Edit (pencil) button. Ctrl+Alt+H: highlight targets.
+// @name         RP Chat: Extract & Copy All Messages
+// @namespace    https://github.com/Krrrrrrk/
+// @version      2.0
+// @description  Ctrl+Alt+E: Extract all messages with labels and copy to clipboard. Ctrl+Alt+H: highlight targets.
 // @match        https://ourdream.ai/*
 // @run-at       document-idle
-// @grant        none
+// @grant        GM_setClipboard
+// @grant        GM.setClipboard
 // ==/UserScript==
 
 (function () {
@@ -25,11 +26,14 @@
 
   // Timing tweaks
   const CLICK_DELAY = 100;
-  const APPEAR_DELAY = 300; // Longer wait for toolbar
-  const MAX_SEARCH_MS = 2000;
+  const APPEAR_DELAY = 500;
+  const MAX_SEARCH_MS = 3000;
   const SCROLL_BEHAVIOR = 'instant';
   const BETWEEN_MESSAGE_DELAY = 200;
-  const AFTER_EDIT_DELAY = 500; // Wait after clicking edit to ensure it opens
+  const TEXTAREA_WAIT = 500; // Wait for textarea to appear after edit click
+
+  // Storage for collected messages
+  let collectedMessages = [];
 
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -38,7 +42,6 @@
     const r = el.getBoundingClientRect();
     const cs = getComputedStyle(el);
 
-    // More lenient visibility check
     const isHidden = cs.visibility === 'hidden' ||
                      cs.display === 'none' ||
                      (r.width === 0 && r.height === 0);
@@ -53,27 +56,33 @@
       el.dispatchEvent(new PointerEvent('pointerup', o));
       el.dispatchEvent(new MouseEvent('click', o));
     } catch(e) {
-      console.error('[RP-Edit] Click error:', e);
+      console.error('[RP-Extract] Click error:', e);
     }
   };
 
   function isPencilButton(btn) {
     if (!btn) return false;
 
-    // Check for the pencil SVG path
-    const paths = btn.querySelectorAll('svg path');
-    for (const path of paths) {
-      const d = path.getAttribute('d');
-      if (d && d.includes('M17 3a2.828')) {
+    const svgs = btn.querySelectorAll('svg');
+    for (const svg of svgs) {
+      const svgHTML = svg.outerHTML || svg.innerHTML || '';
+      if (svgHTML.includes('M17 3a2.828') ||
+          svgHTML.includes('L7.5 20.5 2 22') ||
+          svgHTML.includes('pencil')) {
         return true;
       }
+    }
+
+    const btnHTML = btn.outerHTML || '';
+    if (btnHTML.includes('M17 3a2.828') ||
+        btnHTML.includes('L7.5 20.5 2 22')) {
+      return true;
     }
 
     return false;
   }
 
   function findAllToolbars() {
-    // Search the entire document for toolbars
     const allToolbars = [];
 
     for (const selector of TOOLBAR_SELECTORS) {
@@ -85,7 +94,6 @@
       });
     }
 
-    // Also check for any rounded-full toolbar bubbles
     const bubbles = document.querySelectorAll('div.absolute.rounded-full');
     bubbles.forEach(b => {
       if (isVisible(b) && b.querySelector('button')) {
@@ -100,48 +108,25 @@
 
   function findEditButton(toolbars) {
     for (const tb of toolbars) {
-      console.log('[RP-Edit] Checking toolbar:', tb);
-
-      // Get all buttons in this toolbar
       const allButtons = tb.querySelectorAll('button');
-      console.log(`[RP-Edit] Found ${allButtons.length} total buttons in toolbar`);
-
       const visibleButtons = Array.from(allButtons).filter(isVisible);
-      console.log(`[RP-Edit] ${visibleButtons.length} are visible`);
 
-      // Debug: log all buttons
-      visibleButtons.forEach((btn, idx) => {
-        console.log(`[RP-Edit] Button ${idx}:`, {
-          hasAriahaspopup: btn.hasAttribute('aria-haspopup'),
-          dataState: btn.getAttribute('data-state'),
-          innerHTML: btn.innerHTML.substring(0, 100),
-          isPencil: isPencilButton(btn)
-        });
-      });
-
-      // Look for the pencil button
       for (const btn of visibleButtons) {
-        // Skip if it has aria-haspopup (menu/trash button)
         if (btn.hasAttribute('aria-haspopup')) {
-          console.log('[RP-Edit] Skipping button with aria-haspopup');
           continue;
         }
 
         if (isPencilButton(btn)) {
-          console.log('[RP-Edit] ✅ Found pencil button!');
           return btn;
         }
       }
 
-      // Fallback: first non-menu button
       const nonMenuBtn = visibleButtons.find(b => !b.hasAttribute('aria-haspopup'));
       if (nonMenuBtn) {
-        console.log('[RP-Edit] ✅ Found non-menu button (likely edit)');
         return nonMenuBtn;
       }
     }
 
-    console.log('[RP-Edit] ❌ No suitable button found in any toolbar');
     return null;
   }
 
@@ -152,7 +137,6 @@
       const checkInterval = setInterval(() => {
         const toolbars = findAllToolbars();
         if (toolbars.length > 0) {
-          console.log(`[RP-Edit] Found ${toolbars.length} toolbar(s)`);
           const btn = findEditButton(toolbars);
           if (btn) {
             clearInterval(checkInterval);
@@ -170,31 +154,137 @@
   }
 
   function hideExistingToolbars() {
-    // Hide any existing toolbars before clicking a new message
     const toolbars = findAllToolbars();
-    toolbars.forEach(tb => {
-      tb.style.opacity = '0';
-      tb.style.pointerEvents = 'none';
+    const body = document.body;
+    fullClick(body);
+
+    // Also try to close any open edit modes
+    const cancelBtns = document.querySelectorAll('button');
+    const visibleCancel = Array.from(cancelBtns).find(btn =>
+      btn.textContent && btn.textContent.trim() === 'Cancel' && isVisible(btn)
+    );
+    if (visibleCancel) {
+      console.log('[RP-Extract] Closing existing edit mode');
+      fullClick(visibleCancel);
+    }
+  }
+
+  // Track processed textareas to avoid duplicates
+  let processedTextareas = new Set();
+
+  async function waitForTextarea(messageElement, timeoutMs) {
+    const t0 = performance.now();
+    console.log(`[RP-Extract] Waiting for new textarea... Already processed: ${processedTextareas.size}`);
+
+    let logCounter = 0;
+    return await new Promise(resolve => {
+      const checkInterval = setInterval(() => {
+        // Look for all textareas
+        const allTextareas = document.querySelectorAll('textarea');
+
+        // Log only occasionally to avoid spam
+        if (logCounter++ % 10 === 0) {
+          console.log(`[RP-Extract] Checking ${allTextareas.length} textareas...`);
+        }
+
+        // Find a textarea that:
+        // 1. Is visible
+        // 2. Hasn't been processed yet
+        // 3. Has content (not empty)
+        for (const ta of allTextareas) {
+          const isVis = isVisible(ta);
+          const isProcessed = processedTextareas.has(ta);
+          const hasContent = ta.value.trim() !== '';
+
+          if (!isVis) continue;
+          if (isProcessed) {
+            console.log(`[RP-Extract] Skipping already processed textarea`);
+            continue;
+          }
+          if (!hasContent) continue;
+
+          // Mark this textarea as processed and return it
+          console.log(`[RP-Extract] Found new textarea with ${ta.value.length} chars, preview: "${ta.value.substring(0, 50)}..."`);
+          processedTextareas.add(ta);
+          clearInterval(checkInterval);
+          resolve(ta);
+          return;
+        }
+
+        if (performance.now() - t0 >= timeoutMs) {
+          clearInterval(checkInterval);
+          console.warn('[RP-Extract] Timeout waiting for textarea');
+          // Last resort: find ANY visible textarea with content that we haven't processed
+          const fallback = Array.from(allTextareas).find(ta =>
+            isVisible(ta) && ta.value.trim() !== '' && !processedTextareas.has(ta)
+          );
+          if (fallback) {
+            console.log('[RP-Extract] Using fallback textarea');
+            processedTextareas.add(fallback);
+          }
+          resolve(fallback || null);
+        }
+      }, 50);
     });
   }
 
+  function getMessageRole(msg) {
+    // Look for parent with data-role attribute
+    let element = msg;
+    let maxDepth = 15; // Increased search depth
+
+    while (element && maxDepth > 0) {
+      if (element.hasAttribute && element.hasAttribute('data-role')) {
+        const role = element.getAttribute('data-role');
+        console.log(`[RP-Extract] Found data-role="${role}" on element`);
+        return role;
+      }
+      element = element.parentElement;
+      maxDepth--;
+    }
+
+    // Alternative: check for the group/message div with data-role
+    const messageContainer = document.querySelector('div.group\\/message[data-role]');
+    if (messageContainer && msg.contains(messageContainer)) {
+      const role = messageContainer.getAttribute('data-role');
+      console.log(`[RP-Extract] Found data-role="${role}" via group/message selector`);
+      return role;
+    }
+
+    // Fallback: check toolbar color if still visible
+    const toolbar = findAllToolbars()[0];
+    if (toolbar) {
+      if (toolbar.className.includes('bg-pink-500')) {
+        console.log('[RP-Extract] Determined role as "user" from pink toolbar');
+        return 'user';
+      } else if (toolbar.className.includes('bg-secondary')) {
+        console.log('[RP-Extract] Determined role as "assistant" from secondary toolbar');
+        return 'assistant';
+      }
+    }
+
+    console.warn('[RP-Extract] Could not determine message role');
+    return 'unknown';
+  }
+
   async function processMessage(msg, index, total) {
-    console.log(`[RP-Edit] Processing message ${index + 1}/${total}`);
+    console.log(`[RP-Extract] Processing message ${index + 1}/${total}`);
 
     try {
       // Scroll to message
       msg.scrollIntoView({ behavior: SCROLL_BEHAVIOR, block: 'center' });
       await wait(CLICK_DELAY);
 
+      // Get the role before we click (easier to find)
+      const role = getMessageRole(msg);
+      console.log(`[RP-Extract] Message role: ${role}`);
+
       // Hide any existing toolbars
       hideExistingToolbars();
       await wait(50);
 
       // Click the message to select it
-      console.log('[RP-Edit] Clicking message to select...');
       fullClick(msg);
-
-      // Also try clicking the content area if it exists
       const contentArea = msg.querySelector('.prose') || msg.querySelector('div');
       if (contentArea && contentArea !== msg) {
         await wait(50);
@@ -204,79 +294,178 @@
       await wait(APPEAR_DELAY);
 
       // Wait for and find the edit button
-      console.log('[RP-Edit] Looking for edit button...');
       const btn = await waitForEditButton(MAX_SEARCH_MS);
 
       if (btn) {
-        // Check current state
-        const currentState = btn.getAttribute('data-state');
-        console.log(`[RP-Edit] Found edit button with state: ${currentState}`);
-
         // Click the edit button
-        console.log('[RP-Edit] Clicking edit button...');
+        console.log('[RP-Extract] Clicking edit button...');
         fullClick(btn);
 
-        // Wait to ensure edit mode opens
-        await wait(AFTER_EDIT_DELAY);
+        // Wait for textarea to appear
+        await wait(TEXTAREA_WAIT);
 
-        // Check if state changed
-        const newState = btn.getAttribute('data-state');
-        if (newState !== currentState) {
-          console.log(`[RP-Edit] Edit opened (state: ${currentState} → ${newState})`);
-          return true;
-        } else if (currentState === 'instant-open' || currentState === 'open') {
-          console.log('[RP-Edit] Edit was already open');
+        const textarea = await waitForTextarea(msg, 2000);
+
+        if (textarea) {
+          const text = textarea.value;
+          console.log(`[RP-Extract] Extracted ${text.length} characters from ${role} message`);
+          console.log(`[RP-Extract] Preview: "${text.substring(0, 50)}..."`);
+
+          // Store the message with role label
+          const label = role === 'assistant' ? '[AI]' : role === 'user' ? '[You]' : '[Unknown]';
+          collectedMessages.push({
+            role: role,
+            label: label,
+            text: text,
+            index: index
+          });
+
+          // Click Cancel button to close edit mode
+          const cancelBtns = document.querySelectorAll('button');
+          const cancelBtn = Array.from(cancelBtns).find(btn =>
+            btn.textContent && btn.textContent.trim() === 'Cancel' && isVisible(btn)
+          );
+          if (cancelBtn) {
+            console.log('[RP-Extract] Clicking Cancel to close edit mode');
+            fullClick(cancelBtn);
+            await wait(200);
+          }
+
           return true;
         } else {
-          console.log('[RP-Edit] Edit might have opened (state unchanged)');
-          return true; // Assume success
+          console.warn('[RP-Extract] No textarea found after clicking edit');
+          return false;
         }
       } else {
-        console.warn('[RP-Edit] No edit button found for this message');
-
-        // Debug: show what toolbars were found
-        const toolbars = findAllToolbars();
-        if (toolbars.length === 0) {
-          console.warn('[RP-Edit] No toolbars found at all after clicking');
-        } else {
-          console.log(`[RP-Edit] Found ${toolbars.length} toolbar(s) but no edit button`);
-        }
-
+        console.warn('[RP-Extract] No edit button found for this message');
         return false;
       }
     } catch (e) {
-      console.error('[RP-Edit] Error processing message:', e);
+      console.error('[RP-Extract] Error processing message:', e);
       return false;
     }
   }
 
-  async function runPass() {
+  function formatCollectedMessages() {
+    // Format all collected messages
+    let formatted = '';
+
+    for (const msg of collectedMessages) {
+      // Add separator
+      formatted += '\n' + '─'.repeat(50) + '\n';
+
+      // Add label and text
+      formatted += `${msg.label}\n${msg.text}\n`;
+    }
+
+    // Add final separator
+    formatted += '\n' + '═'.repeat(50) + '\n';
+    formatted += `\nExtracted ${collectedMessages.length} messages from RP chat\n`;
+
+    return formatted;
+  }
+
+  function copyToClipboard(text) {
+    // Try multiple methods to ensure compatibility
+
+    // Method 1: GM_setClipboard (if available)
+    if (typeof GM_setClipboard !== 'undefined') {
+      GM_setClipboard(text);
+      return true;
+    }
+
+    // Method 2: GM.setClipboard (newer API)
+    if (typeof GM !== 'undefined' && GM.setClipboard) {
+      GM.setClipboard(text);
+      return true;
+    }
+
+    // Method 3: Modern Clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        console.log('[RP-Extract] Copied to clipboard using Clipboard API');
+      }).catch(err => {
+        console.error('[RP-Extract] Clipboard API failed:', err);
+        fallbackCopy(text);
+      });
+      return true;
+    }
+
+    // Method 4: Fallback using textarea
+    return fallbackCopy(text);
+  }
+
+  function fallbackCopy(text) {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.top = '0';
+      textarea.style.left = '0';
+      textarea.style.width = '2px';
+      textarea.style.height = '2px';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      console.log('[RP-Extract] Copied to clipboard using fallback method');
+      return true;
+    } catch (e) {
+      console.error('[RP-Extract] Fallback copy failed:', e);
+      return false;
+    }
+  }
+
+  async function runExtraction() {
+    // Reset collected messages and processed textareas
+    collectedMessages = [];
+    processedTextareas = new Set();
+
     const messages = Array.from(document.querySelectorAll(MESSAGE_SELECTOR)).filter(isVisible);
-    console.log(`[RP-Edit] Found ${messages.length} messages to process`);
+    console.log(`[RP-Extract] Found ${messages.length} messages to process`);
 
     if (messages.length === 0) {
-      console.warn('[RP-Edit] No messages found. Check the MESSAGE_SELECTOR');
+      console.warn('[RP-Extract] No messages found');
+      alert('No messages found to extract!');
       return;
     }
 
-    let opened = 0, failed = 0;
+    let extracted = 0, failed = 0;
 
     for (let i = 0; i < messages.length; i++) {
       const success = await processMessage(messages[i], i, messages.length);
 
       if (success) {
-        opened++;
+        extracted++;
       } else {
         failed++;
       }
 
-      // Wait between messages
       await wait(BETWEEN_MESSAGE_DELAY);
     }
 
-    console.log(`[RP-Edit] ✅ Complete! Successfully opened ${opened}/${messages.length} messages`);
+    console.log(`[RP-Extract] ✅ Extraction complete! Extracted ${extracted}/${messages.length} messages`);
     if (failed > 0) {
-      console.log(`[RP-Edit] ⚠️ Failed to open edit for ${failed} message(s)`);
+      console.log(`[RP-Extract] ⚠️ Failed to extract ${failed} message(s)`);
+    }
+
+    // Format and copy to clipboard
+    if (collectedMessages.length > 0) {
+      const formatted = formatCollectedMessages();
+      console.log('[RP-Extract] Formatted text preview:', formatted.substring(0, 500) + '...');
+
+      if (copyToClipboard(formatted)) {
+        alert(`✅ Successfully extracted and copied ${collectedMessages.length} messages to clipboard!\n\n` +
+              `${collectedMessages.filter(m => m.role === 'user').length} from you\n` +
+              `${collectedMessages.filter(m => m.role === 'assistant').length} from AI`);
+      } else {
+        console.error('[RP-Extract] Failed to copy to clipboard');
+        alert('Extraction complete but failed to copy to clipboard. Check console for the text.');
+        console.log('[RP-Extract] Full extracted text:', formatted);
+      }
+    } else {
+      alert('No messages were successfully extracted. Check the console for errors.');
     }
   }
 
@@ -294,9 +483,9 @@
     if (highlightOn) {
       const messages = Array.from(document.querySelectorAll(MESSAGE_SELECTOR)).filter(isVisible);
       messages.forEach(n => n.classList.add(HILITE_CLASS));
-      console.log(`[RP-Edit] Highlighted ${messages.length} messages`);
+      console.log(`[RP-Extract] Highlighted ${messages.length} messages`);
     } else {
-      console.log('[RP-Edit] Highlighting disabled');
+      console.log('[RP-Extract] Highlighting disabled');
     }
   }
 
@@ -310,10 +499,10 @@
       toggleHighlight();
     } else if (k === 'e') {
       e.preventDefault();
-      console.log('[RP-Edit] Starting edit pass...');
-      runPass();
+      console.log('[RP-Extract] Starting extraction...');
+      runExtraction();
     }
   });
 
-  console.log('[RP-Edit] Script loaded. Use Ctrl+Alt+E to edit all, Ctrl+Alt+H to highlight.');
+  console.log('[RP-Extract] Script loaded. Use Ctrl+Alt+E to extract all messages, Ctrl+Alt+H to highlight.');
 })();
