@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         RP Chat: Extract & Copy All Messages
-// @namespace    https://github.com/Krrrrrrk/
-// @version      2.0
-// @description  Ctrl+Alt+E: Extract all messages with labels and copy to clipboard. Ctrl+Alt+H: highlight targets.
+// @namespace    https://example.com
+// @version      2.1
+// @description  Ctrl+Alt+E: Extract all messages with custom character names and copy to clipboard. Ctrl+Alt+H: highlight targets.
 // @match        https://ourdream.ai/*
 // @run-at       document-idle
 // @grant        GM_setClipboard
@@ -29,11 +29,15 @@
   const APPEAR_DELAY = 500;
   const MAX_SEARCH_MS = 3000;
   const SCROLL_BEHAVIOR = 'instant';
-  const BETWEEN_MESSAGE_DELAY = 200;
+  const BETWEEN_MESSAGE_DELAY = 300; // Increased to ensure proper cleanup
   const TEXTAREA_WAIT = 500; // Wait for textarea to appear after edit click
 
   // Storage for collected messages
   let collectedMessages = [];
+
+  // Global variables for labels
+  let globalAILabel = '[AI]';
+  let globalUserLabel = '[You]';
 
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -153,7 +157,7 @@
     });
   }
 
-  function hideExistingToolbars() {
+  async function hideExistingToolbars() {
     const toolbars = findAllToolbars();
     const body = document.body;
     fullClick(body);
@@ -166,6 +170,7 @@
     if (visibleCancel) {
       console.log('[RP-Extract] Closing existing edit mode');
       fullClick(visibleCancel);
+      await wait(300); // Use fixed wait time
     }
   }
 
@@ -280,7 +285,7 @@
       console.log(`[RP-Extract] Message role: ${role}`);
 
       // Hide any existing toolbars
-      hideExistingToolbars();
+      await hideExistingToolbars();
       await wait(50);
 
       // Click the message to select it
@@ -311,8 +316,8 @@
           console.log(`[RP-Extract] Extracted ${text.length} characters from ${role} message`);
           console.log(`[RP-Extract] Preview: "${text.substring(0, 50)}..."`);
 
-          // Store the message with role label
-          const label = role === 'assistant' ? '[AI]' : role === 'user' ? '[You]' : '[Unknown]';
+          // Store the message with custom role label
+          const label = role === 'assistant' ? globalAILabel : role === 'user' ? globalUserLabel : '[Unknown]';
           collectedMessages.push({
             role: role,
             label: label,
@@ -328,7 +333,9 @@
           if (cancelBtn) {
             console.log('[RP-Extract] Clicking Cancel to close edit mode');
             fullClick(cancelBtn);
-            await wait(200);
+            await wait(300); // Wait after cancel
+          } else {
+            console.warn('[RP-Extract] No Cancel button found, continuing anyway');
           }
 
           return true;
@@ -418,6 +425,18 @@
   }
 
   async function runExtraction() {
+    // Try to get custom AI character name (optional)
+    try {
+      const aiName = prompt('Enter the AI character name (e.g., "Maddie", "Susan"):\n\nLeave blank for "AI", Cancel for default "[AI]"', '');
+      if (aiName !== null && aiName.trim()) {
+        globalAILabel = `[${aiName.trim()}]`;
+      }
+    } catch (e) {
+      console.log('[RP-Extract] Could not show prompt, using default labels');
+    }
+
+    console.log(`[RP-Extract] Using labels: AI="${globalAILabel}", User="${globalUserLabel}"`);
+
     // Reset collected messages and processed textareas
     collectedMessages = [];
     processedTextareas = new Set();
@@ -456,9 +475,11 @@
       console.log('[RP-Extract] Formatted text preview:', formatted.substring(0, 500) + '...');
 
       if (copyToClipboard(formatted)) {
+        const userCount = collectedMessages.filter(m => m.role === 'user').length;
+        const aiCount = collectedMessages.filter(m => m.role === 'assistant').length;
         alert(`✅ Successfully extracted and copied ${collectedMessages.length} messages to clipboard!\n\n` +
-              `${collectedMessages.filter(m => m.role === 'user').length} from you\n` +
-              `${collectedMessages.filter(m => m.role === 'assistant').length} from AI`);
+              `${userCount} from ${globalUserLabel}\n` +
+              `${aiCount} from ${globalAILabel}`);
       } else {
         console.error('[RP-Extract] Failed to copy to clipboard');
         alert('Extraction complete but failed to copy to clipboard. Check console for the text.');
@@ -504,5 +525,5 @@
     }
   });
 
-  console.log('[RP-Extract] Script loaded. Use Ctrl+Alt+E to extract all messages, Ctrl+Alt+H to highlight.');
+  console.log('[RP-Extract] Script loaded. Use Ctrl+Alt+E to extract (with custom character names), Ctrl+Alt+H to highlight.');
 })();
