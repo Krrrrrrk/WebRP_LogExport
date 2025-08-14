@@ -87,6 +87,10 @@ Or with default labels if you don't enter a custom name:
 *I hand over my documents...*
 ```
 
+## Recommended: Markdown Editor
+
+For the best viewing and editing experience of your extracted RP sessions, I recommend using a markdown editor. I personally use **[Obsidian](https://obsidian.md/)** - it's free, handles markdown beautifully, and makes it easy to organize multiple RP sessions. Other good options include Typora, VS Code, or any text editor with markdown support.
+
 ## Important Notes
 
 ### Keep the Tab Active
