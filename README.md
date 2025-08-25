@@ -2,12 +2,6 @@
 
 A Tampermonkey userscript that extracts and copies all messages from RP chat sessions on OurDream.ai, preserving markdown formatting and clearly labeling who said what.
 
-Want to support me? Send me some coins or create your OurDream.ai account with my referral!
-
-Referral: https://ourdream.ai/?reward=referral&ref=B4PBGY
-
-ourdream.ai profile: https://ourdream.ai/u/krrrrrrk
-
 ## ⚠️ Support Notice
 
 **I do not provide support for Tampermonkey installation or usage.** This script assumes you already know how to use Tampermonkey or can figure it out on your own. For Tampermonkey help, please refer to [Tampermonkey's documentation](https://www.tampermonkey.net/documentation.php) or online tutorials.
