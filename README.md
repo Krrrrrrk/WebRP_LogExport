@@ -167,6 +167,10 @@ Found a bug or want to add a feature? Feel free to:
 
 ## Changelog
 
+### Version 5
+
+- Changes to OurDream.ai broke the script, rewrote it completly and it's working again.
+
 ### Version 2.1
 - Added custom character name prompt
 - Can now rename [AI] to any character name (e.g., [Maddie], [Susan], [Officer Bosch])
